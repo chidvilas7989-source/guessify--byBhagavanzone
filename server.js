@@ -48,7 +48,7 @@ function getSongsFromFolder() {
     }
     const files = fs.readdirSync(SONGS_FOLDER);
     return files
-      .filter(file => /\.(mp3|wav|ogg|m4a|aac)$/i.test(file))
+      .filter(file => /\.(mp3|wav|ogg|m4a|aac|webm|mp4)$/i.test(file))
       .map((file, index) => ({
         id: index,
         name: path.parse(file).name.replace(/[-_]/g, ' '),
