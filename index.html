@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guessify — Multiplayer Music Game</title>
+    <meta name="description"
+        content="Real-time multiplayer music guessing game. Create a room, play 60-second clips, and compete with friends!">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --primary-light: #a78bfa;
+            --accent: #f97316;
+            --accent2: #ec4899;
+            --bg: #0d0d14;
+            --bg2: #13131f;
+            --bg3: #1c1c2e;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text: #f1f1f5;
+            --muted: #8888aa;
+            --success: #22c55e;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #38bdf8;
+            --radius: 14px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(ellipse at 20% 20%, rgba(124, 58, 237, 0.12) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ---- HEADER ---- */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(13, 13, 20, 0.85);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: .9rem 1.5rem;
+        }
+
+        .header-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--primary-light), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: .35rem .9rem;
+            border-radius: 50px;
+            font-size: .78rem;
+            font-weight: 600;
+            letter-spacing: .3px;
+        }
+
+        .badge-room {
+            background: rgba(124, 58, 237, .2);
+            border: 1px solid rgba(124, 58, 237, .4);
+            color: var(--primary-light);
+        }
+
+        .badge-host {
+            background: rgba(249, 115, 22, .2);
+            border: 1px solid rgba(249, 115, 22, .4);
+            color: #fb923c;
+        }
+
+        .badge-member {
+            background: rgba(34, 197, 94, .15);
+            border: 1px solid rgba(34, 197, 94, .3);
+            color: #4ade80;
+        }
+
+        /* ---- TIMER RING ---- */
+        .timer-wrap {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        .timer-ring-svg {
+            width: 48px;
+            height: 48px;
+            transform: rotate(-90deg);
+        }
+
+        .timer-ring-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, .1);
+            stroke-width: 4;
+        }
+
+        .timer-ring-fg {
+            fill: none;
+            stroke-width: 4;
+            stroke-linecap: round;
+            transition: stroke-dashoffset .8s linear, stroke .4s;
+        }
+
+        .timer-text {
+            font-size: .85rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .grace-label {
+            font-size: .7rem;
+            color: var(--warning);
+            font-weight: 600;
+            animation: pulse 1s infinite;
+        }
+
+        /* ---- CONTAINER ---- */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+            animation: fadeUp .35s ease;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ---- GLASS CARD ---- */
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 1.8rem;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--primary-light);
+            margin-bottom: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        /* ---- WELCOME SCREEN ---- */
+        .welcome-wrap {
+            max-width: 860px;
+            margin: 3rem auto;
+            text-align: center;
+        }
+
+        .hero-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            ;
+        }
+
+        .hero-title {
+            font-size: 3rem;
+            font-weight: 900;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #fff 30%, var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: .5rem;
+        }
+
+        .hero-sub {
+            color: var(--muted);
+            font-size: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .home-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media(max-width:640px) {
+            .home-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .home-card {
+            background: var(--bg2);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            transition: border-color .3s, transform .3s, box-shadow .3s;
+        }
+
+        .home-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(124, 58, 237, .2);
+        }
+
+        .home-card h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: var(--text);
+        }
+
+        /* ---- FORMS ---- */
+        .form-group {
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: .4rem;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+        }
+
+        input[type=text],
+        input[type=tel],
+        select {
+            width: 100%;
+            padding: .8rem 1rem;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: .95rem;
+            font-family: 'Inter', sans-serif;
+            transition: border-color .3s, box-shadow .3s;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, .15);
+        }
+
+        input::placeholder {
+            color: var(--muted);
+        }
+
+        /* ---- BUTTONS ---- */
+        .btn {
+            padding: .8rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Inter', sans-serif;
+            font-size: .9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .25s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .4rem;
+            letter-spacing: .2px;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #5b21b6);
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(124, 58, 237, .3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(124, 58, 237, .45);
+        }
+
+        .btn-accent {
+            background: linear-gradient(135deg, var(--accent), #dc2626);
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(249, 115, 22, .3);
+        }
+
+        .btn-accent:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(249, 115, 22, .4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--primary-light);
+            background: rgba(124, 58, 237, .1);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626, #991b1b);
+            color: #fff;
+        }
+
+        .btn-violet {
+            background: linear-gradient(135deg, #7c3aed, #4f46e5);
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: .5rem 1rem;
+            font-size: .82rem;
+        }
+
+        .btn:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* ---- ROOM SCREEN ---- */
+        .room-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        @media(max-width:900px) {
+            .room-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .room-code-display {
+            background: linear-gradient(135deg, rgba(124, 58, 237, .15), rgba(236, 72, 153, .1));
+            border: 1px solid rgba(124, 58, 237, .3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .room-code-val {
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            color: var(--primary-light);
+            font-family: 'Courier New', monospace;
+        }
+
+        .players-list {
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .player-item {
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: .9rem 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: border-color .3s;
+        }
+
+        .player-item.is-host {
+            border-color: rgba(249, 115, 22, .4);
+            background: rgba(249, 115, 22, .07);
+        }
+
+        .player-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: .85rem;
+            flex-shrink: 0;
+        }
+
+        .player-name-text {
+            flex: 1;
+            margin-left: .8rem;
+            font-weight: 600;
+            font-size: .92rem;
+        }
+
+        .pip {
+            padding: .25rem .65rem;
+            border-radius: 50px;
+            font-size: .7rem;
+            font-weight: 700;
+        }
+
+        .pip-host {
+            background: rgba(249, 115, 22, .2);
+            color: #fb923c;
+        }
+
+        .pip-you {
+            background: rgba(124, 58, 237, .2);
+            color: var(--primary-light);
+        }
+
+        .min-warn {
+            background: rgba(245, 158, 11, .1);
+            border: 1px solid rgba(245, 158, 11, .3);
+            border-radius: 10px;
+            padding: .9rem 1.1rem;
+            font-size: .85rem;
+            font-weight: 600;
+            color: var(--warning);
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        /* ---- GAME LAYOUT ---- */
+        .game-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        @media(max-width:1000px) {
+            .game-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ---- SONG SELECT ---- */
+        .song-search {
+            position: relative;
+            margin-bottom: .8rem;
+        }
+
+        .song-search input {
+            padding-left: 2.4rem;
+        }
+
+        .song-search::before {
+            content: '🔍';
+            position: absolute;
+            left: .8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: .85rem;
+        }
+
+        .song-list {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            background: var(--bg3);
+        }
+
+        .song-item {
+            padding: .75rem 1rem;
+            cursor: pointer;
+            transition: background .2s;
+            font-size: .9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, .04);
+        }
+
+        .song-item:last-child {
+            border-bottom: none;
+        }
+
+        .song-item:hover {
+            background: rgba(124, 58, 237, .15);
+        }
+
+        .song-item.selected {
+            background: rgba(124, 58, 237, .25);
+            font-weight: 700;
+            color: var(--primary-light);
+        }
+
+        /* ---- TRACK SLIDER ---- */
+        .track-section {
+            background: linear-gradient(135deg, rgba(124, 58, 237, .1), rgba(249, 115, 22, .06));
+            border: 1px solid rgba(124, 58, 237, .2);
+            border-radius: 10px;
+            padding: 1.2rem;
+            margin: 1rem 0;
+        }
+
+        input[type=range] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--glass-border);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            padding: 0;
+            border: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary-light);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(124, 58, 237, .5);
+        }
+
+        .track-time {
+            font-weight: 700;
+            color: var(--primary-light);
+            font-size: .9rem;
+            text-align: center;
+            margin: .5rem 0;
+        }
+
+        /* ---- MUSIC VISUALIZER ---- */
+        .visualizer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 4px;
+            height: 40px;
+            margin: 1rem 0;
+        }
+
+        .viz-bar {
+            width: 6px;
+            border-radius: 3px 3px 0 0;
+            background: linear-gradient(180deg, var(--primary-light), var(--accent2));
+            animation: none;
+        }
+
+        .viz-bar.playing {
+            animation: vizBounce var(--spd, 0.6s) ease-in-out infinite alternate;
+        }
+
+        @keyframes vizBounce {
+            from {
+                height: 6px;
+            }
+
+            to {
+                height: var(--h, 32px);
+            }
+        }
+
+        /* ---- MEMBER WAITING ---- */
+        .member-wait {
+            text-align: center;
+            padding: 2.5rem 2rem;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+        }
+
+        .wait-icon {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+
+        .wait-status {
+            color: var(--muted);
+            font-size: .95rem;
+            margin-top: .5rem;
+        }
+
+        /* ---- WINNER SECTION ---- */
+        .winner-section {
+            background: rgba(249, 115, 22, .07);
+            border: 1px solid rgba(249, 115, 22, .25);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-top: 1.2rem;
+        }
+
+        .members-radio {
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+            max-height: 180px;
+            overflow-y: auto;
+            margin: .8rem 0;
+        }
+
+        .member-radio {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            padding: .7rem .9rem;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color .2s, background .2s;
+        }
+
+        .member-radio:hover {
+            border-color: var(--primary);
+            background: rgba(124, 58, 237, .1);
+        }
+
+        .member-radio input[type=radio] {
+            accent-color: var(--primary);
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .member-radio label {
+            cursor: pointer;
+            font-weight: 500;
+            font-size: .92rem;
+        }
+
+        /* ---- CONFETTI ---- */
+        .confetti-wrap {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            top: -10px;
+            animation: confettiFall linear forwards;
+        }
+
+        @keyframes confettiFall {
+            to {
+                transform: translateY(110vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        /* ---- CHAT ---- */
+        .chat-box {
+            background: var(--bg2);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            display: flex;
+            flex-direction: column;
+            height: 420px;
+            margin-top: 1.2rem;
+        }
+
+        .chat-header {
+            padding: 1rem 1.2rem;
+            border-bottom: 1px solid var(--glass-border);
+            font-weight: 700;
+            color: var(--primary-light);
+            font-size: .9rem;
+        }
+
+        .chat-msgs {
+            flex: 1;
+            overflow-y: auto;
+            padding: .8rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+        }
+
+        .msg {
+            max-width: 78%;
+            border-radius: 12px;
+            padding: .6rem .9rem;
+            font-size: .88rem;
+            line-height: 1.4;
+        }
+
+        .msg.mine {
+            align-self: flex-end;
+            background: linear-gradient(135deg, var(--primary), #5b21b6);
+            color: #fff;
+            border-bottom-right-radius: 3px;
+        }
+
+        .msg.other {
+            align-self: flex-start;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-bottom-left-radius: 3px;
+        }
+
+        .msg-name {
+            font-size: .72rem;
+            font-weight: 700;
+            opacity: .7;
+            margin-bottom: .2rem;
+        }
+
+        .msg-time {
+            font-size: .68rem;
+            opacity: .5;
+            margin-top: .2rem;
+            text-align: right;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: .5rem;
+            padding: .8rem 1rem;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .chat-input-row input {
+            flex: 1;
+            padding: .7rem .9rem;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: .88rem;
+            outline: none;
+            transition: border-color .3s;
+        }
+
+        .chat-input-row input:focus {
+            border-color: var(--primary);
+        }
+
+        .send-btn {
+            padding: .7rem 1.1rem;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s;
+            font-size: .85rem;
+        }
+
+        .send-btn:hover {
+            background: #5b21b6;
+        }
+
+        /* ---- SIDEBAR ---- */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            padding: .7rem .9rem;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            margin-bottom: .5rem;
+            transition: border-color .3s;
+        }
+
+        .leaderboard-item:first-child {
+            border-color: rgba(249, 115, 22, .4);
+            background: rgba(249, 115, 22, .08);
+        }
+
+        .lb-rank {
+            font-size: 1rem;
+            font-weight: 800;
+            width: 24px;
+            color: var(--accent);
+        }
+
+        .lb-name {
+            flex: 1;
+            font-weight: 600;
+            font-size: .9rem;
+        }
+
+        .lb-score {
+            background: linear-gradient(135deg, var(--primary), #5b21b6);
+            padding: .25rem .7rem;
+            border-radius: 50px;
+            font-size: .78rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .rotation-list {
+            display: flex;
+            flex-direction: column;
+            gap: .4rem;
+        }
+
+        .rotation-item {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            padding: .55rem .8rem;
+            border-radius: 8px;
+            font-size: .85rem;
+            font-weight: 500;
+            background: var(--bg3);
+            border: 1px solid var(--glass-border);
+        }
+
+        .rotation-item.current-host {
+            border-color: rgba(249, 115, 22, .5);
+            background: rgba(249, 115, 22, .1);
+            color: #fb923c;
+            font-weight: 700;
+        }
+
+        .rotation-item.done {
+            opacity: .4;
+            text-decoration: line-through;
+        }
+
+        .rotation-num {
+            width: 20px;
+            text-align: center;
+            font-weight: 800;
+            font-size: .75rem;
+            color: var(--muted);
+        }
+
+        /* ---- NOTIFICATIONS ---- */
+        #notifContainer {
+            position: fixed;
+            top: 80px;
+            right: 1.2rem;
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+            max-width: 300px;
+        }
+
+        .notif {
+            padding: .9rem 1.2rem;
+            border-radius: 10px;
+            font-size: .88rem;
+            font-weight: 600;
+            animation: slideIn .3s ease;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: flex-start;
+            gap: .5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .notif-progress {
+            height: 3px;
+            border-radius: 2px;
+            margin-top: .6rem;
+            background: rgba(255, 255, 255, .3);
+            animation: progressShrink 3.8s linear forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(330px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes progressShrink {
+            from {
+                width: 100%;
+            }
+
+            to {
+                width: 0%;
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
+        }
+
+        .notif.success {
+            background: rgba(22, 163, 74, .9);
+            color: #fff;
+        }
+
+        .notif.error {
+            background: rgba(220, 38, 38, .9);
+            color: #fff;
+        }
+
+        .notif.info {
+            background: rgba(56, 189, 248, .9);
+            color: #000;
+        }
+
+        .notif.warning {
+            background: rgba(245, 158, 11, .9);
+            color: #000;
+        }
+
+        /* ---- MODAL ---- */
+        .modal-bg {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .7);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 5000;
+        }
+
+        .modal-bg.open {
+            display: flex;
+        }
+
+        .modal-box {
+            background: var(--bg2);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            max-width: 400px;
+            width: 90%;
+            animation: scaleIn .25s ease;
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(.9);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: .8rem;
+        }
+
+        .modal-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: .8rem;
+            margin-top: 1.5rem;
+        }
+
+        /* ---- GRACE BANNER ---- */
+        .grace-banner {
+            background: rgba(245, 158, 11, .12);
+            border: 1px solid rgba(245, 158, 11, .35);
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .grace-banner.active {
+            display: block;
+        }
+
+        .grace-banner .g-title {
+            font-weight: 700;
+            color: var(--warning);
+            font-size: .95rem;
+        }
+
+        .grace-banner .g-sub {
+            font-size: .82rem;
+            color: var(--muted);
+            margin-top: .2rem;
+        }
+
+        /* ---- CYCLE BADGE ---- */
+        .cycle-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            background: rgba(236, 72, 153, .15);
+            border: 1px solid rgba(236, 72, 153, .3);
+            border-radius: 50px;
+            padding: .3rem .8rem;
+            font-size: .78rem;
+            font-weight: 700;
+            color: #f472b6;
+            margin-left: .6rem;
+        }
+
+        /* ---- SCROLLBAR ---- */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg3);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(124, 58, 237, .5);
+            border-radius: 3px;
+        }
+
+        /* ---- UTILS ---- */
+        .hidden {
+            display: none !important;
+        }
+
+        .mt1 {
+            margin-top: .6rem;
+        }
+
+        .mt2 {
+            margin-top: 1.2rem;
+        }
+
+        .sep {
+            height: 1px;
+            background: var(--glass-border);
+            margin: 1.2rem 0;
+        }
+
+        .text-muted {
+            color: var(--muted);
+            font-size: .85rem;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .flex-row {
+            display: flex;
+            gap: .6rem;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="header-inner">
+            <div class="logo">🎵GUESSIFY-byBhagavanzone</div>
+            <div id="headerMeta" class="header-meta hidden">
+                <span class="badge badge-room">Room: <strong id="hRoomCode">-</strong></span>
+                <span id="hHostBadge" class="badge badge-host hidden">👑 HOST</span>
+                <span id="hMemberBadge" class="badge badge-member hidden">🎧 MEMBER</span>
+                <div class="timer-wrap">
+                    <svg class="timer-ring-svg" viewBox="0 0 48 48">
+                        <circle class="timer-ring-bg" cx="24" cy="24" r="20" />
+                        <circle class="timer-ring-fg" id="timerRingFg" cx="24" cy="24" r="20" stroke-dasharray="125.66"
+                            stroke-dashoffset="0" stroke="#7c3aed" />
+                    </svg>
+                    <div>
+                        <div class="timer-text" id="hTimerText">3:00</div>
+                        <div class="grace-label hidden" id="hGraceLabel">GRACE</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- NOTIFICATIONS -->
+    <div id="notifContainer"></div>
+    <!-- CONFETTI -->
+    <div class="confetti-wrap" id="confettiWrap"></div>
+
+    <!-- LEAVE MODAL -->
+    <div class="modal-bg" id="leaveModal">
+        <div class="modal-box">
+            <div class="modal-title">⚠️ Leave Room?</div>
+            <p class="text-muted">You'll be disconnected from the game.</p>
+            <div class="modal-btns">
+                <button class="btn btn-outline" onclick="cancelLeave()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmLeave()">Leave</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- ===== WELCOME SCREEN ===== -->
+        <div id="screenWelcome" class="screen active">
+            <div class="welcome-wrap">
+                <div class="hero-icon">🎵</div>
+                <h1 class="hero-title">Guessify</h1>
+                <p class="hero-sub">Real-time multiplayer music guessing — create a room, play clips, compete!</p>
+                <div class="home-grid">
+                    <!-- Create -->
+                    <div class="home-card">
+                        <h2>🎮 Create Room</h2>
+                        <div class="form-group">
+                            <label>Your Name</label>
+                            <input type="text" id="createName" placeholder="e.g. Alice" maxlength="20" id="createName">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+                            <input type="tel" id="createPhone" placeholder="e.g. 9876543210" maxlength="15">
+                        </div>
+                        <button class="btn btn-primary btn-full mt1" onclick="createRoom()">🚀 Create Room</button>
+                    </div>
+                    <!-- Join -->
+                    <div class="home-card">
+                        <h2>📱 Join Room</h2>
+                        <div class="form-group">
+                            <label>Your Name</label>
+                            <input type="text" id="joinName" placeholder="e.g. Bob" maxlength="20">
+                        </div>
+                        <div class="form-group">
+                            <label>Room Code</label>
+                            <input type="text" id="joinCode" placeholder="e.g. ABC123" maxlength="6"
+                                oninput="this.value=this.value.toUpperCase()"
+                                onkeypress="if(event.key==='Enter')joinRoom()">
+                        </div>
+                        <button class="btn btn-primary btn-full mt1" onclick="joinRoom()">🔗 Join Room</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== ROOM LOBBY SCREEN ===== -->
+        <div id="screenRoom" class="screen">
+            <div class="room-grid">
+                <!-- Left: lobby info -->
+                <div class="card">
+                    <div class="room-code-display">
+                        <div class="text-muted" style="font-size:.82rem;margin-bottom:.4rem;">ROOM CODE</div>
+                        <div class="room-code-val" id="lobbyRoomCode">------</div>
+                        <button class="btn btn-outline btn-sm mt1" onclick="copyCode()">📋 Copy Code</button>
+                    </div>
+                    <div id="hostLobbyBanner" class="hidden"
+                        style="text-align:center;padding:1rem 0;border-top:1px solid var(--glass-border);">
+                        <span style="color:var(--accent);font-weight:700;">👑 You are the Room Host</span>
+                        <div class="text-muted mt1" style="font-size:.82rem;">Start the game when all players are ready
+                        </div>
+                    </div>
+                    <div class="sep"></div>
+                    <div class="card-title">👥 Players <span id="lobbyPlayerCount" class="text-muted"
+                            style="font-weight:400;margin-left:.3rem">(0)</span></div>
+                    <div class="players-list" id="lobbyPlayers"></div>
+                    <div class="min-warn hidden" id="minWarn">⚠️ Need at least 2 players to start</div>
+                    <div class="mt2 flex-row">
+                        <button id="startBtn" class="btn btn-success hidden btn-full" onclick="startGame()">🎬 Start
+                            Game</button>
+                    </div>
+                    <button class="btn btn-outline btn-sm mt1" onclick="askLeave()">← Leave Room</button>
+                </div>
+                <!-- Right: how it works -->
+                <div class="card">
+                    <div class="card-title">📖 How It Works</div>
+                    <ul style="list-style:none;line-height:2.2;color:var(--muted);font-size:.88rem;">
+                        <li>✅ Create or join a room with a code</li>
+                        <li>✅ Wait for 2+ players, host starts</li>
+                        <li>✅ Host picks a song &amp; 60-second clip</li>
+                        <li>✅ Members hear and guess in chat</li>
+                        <li>✅ Host declares the winner</li>
+                        <li>✅ 3-min round timer → auto-next host</li>
+                        <li>✅ 30-sec grace after timer expires</li>
+                        <li>✅ All members rotate as host in order</li>
+                        <li>✅ Cycle repeats with same order</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== GAME SCREEN ===== -->
+        <div id="screenGame" class="screen">
+            <!-- Grace Period Banner -->
+            <div class="grace-banner" id="graceBanner">
+                <div class="g-title">⚡ Grace Period Active</div>
+                <div class="g-sub">Host has <strong id="graceCountdown">30</strong>s to respond before auto-skip</div>
+            </div>
+
+            <div class="game-grid">
+                <!-- Main area -->
+                <div>
+                    <!-- HOST CONTROLS -->
+                    <div id="hostSection" class="card hidden">
+                        <div class="card-title">👑 Host Controls</div>
+
+                        <!-- Song Search & List -->
+                        <div class="card-title" style="margin-bottom:.6rem;font-size:.88rem;">🎵 Choose a Song</div>
+                        <div class="song-search">
+                            <input type="text" id="songSearch" placeholder="Search songs..." oninput="filterSongs()">
+                        </div>
+                        <div class="song-list" id="songList"></div>
+
+                        <!-- Selected song info -->
+                        <div id="selectedSongInfo" class="hidden"
+                            style="margin-top:.8rem;padding:.8rem 1rem;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);border-radius:10px;">
+                            <div style="font-weight:700;color:var(--primary-light);" id="selSongName">-</div>
+                            <div class="text-muted" style="font-size:.78rem;margin-top:.2rem;">Selected for this round
+                            </div>
+                        </div>
+
+                        <!-- Track Slider -->
+                        <div class="track-section hidden" id="trackSection">
+                            <div
+                                style="font-size:.82rem;font-weight:700;color:var(--primary-light);margin-bottom:.6rem;">
+                                🎚️ Clip Position (60s window)</div>
+                            <input type="range" id="trackSlider" min="0" max="240" value="0" oninput="onSliderChange()">
+                            <div class="track-time" id="trackTimeText">0s → 60s</div>
+                        </div>
+
+                        <div class="flex-row mt1">
+                            <button class="btn btn-accent" onclick="playSong()" style="flex:1;">▶️ Play Clip</button>
+                            <button class="btn btn-outline" onclick="stopSong()" style="flex:1;">⏹ Stop</button>
+                        </div>
+
+                        <audio id="audioEl" style="display:none;"></audio>
+
+                        <!-- Winner Section -->
+                        <div class="winner-section mt2">
+                            <div class="card-title" style="color:#fb923c;">🏆 Declare Winner</div>
+                            <div class="form-group">
+                                <label>Correct Song Name</label>
+                                <input type="text" id="correctSong" placeholder="What was the song?">
+                            </div>
+                            <div class="form-group">
+                                <label>Who Guessed It?</label>
+                                <div class="members-radio" id="membersRadio">
+                                    <div class="text-muted text-center" style="padding:.8rem;">Loading members…</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-accent btn-full" onclick="declareWinner()">✅ Declare Winner</button>
+                            <button class="btn btn-violet btn-full mt1" onclick="moveHost()">🔄 Move to Next
+                                Host</button>
+                        </div>
+                    </div>
+
+                    <!-- MEMBER VIEW -->
+                    <div id="memberSection" class="card hidden">
+                        <div class="card-title">🎧 Listening Mode</div>
+                        <div class="visualizer" id="visualizer">
+                            <div class="viz-bar" style="--spd:0.5s;--h:38px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.7s;--h:26px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.4s;--h:34px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.8s;--h:20px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.55s;--h:30px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.65s;--h:38px;height:8px;"></div>
+                            <div class="viz-bar" style="--spd:0.45s;--h:22px;height:8px;"></div>
+                        </div>
+                        <div class="member-wait">
+                            <div class="wait-icon" id="waitIcon">🎧</div>
+                            <div style="font-weight:700;font-size:1.1rem;color:var(--primary-light);" id="waitTitle">
+                                Waiting for Host</div>
+                            <div class="wait-status" id="waitStatus">Host is selecting a song…</div>
+                        </div>
+                        <!-- Member also sees players -->
+                        <div class="sep"></div>
+                        <div class="card-title" style="font-size:.88rem;">👥 In This Room</div>
+                        <div class="players-list" id="memberPlayersList"></div>
+                        <audio id="memberAudio" style="display:none;"></audio>
+                    </div>
+
+                    <!-- CHAT -->
+                    <div class="chat-box">
+                        <div class="chat-header">💬 Chat &amp; Guesses</div>
+                        <div class="chat-msgs" id="chatMsgs"></div>
+                        <div class="chat-input-row">
+                            <input type="text" id="chatInput" placeholder="Type your guess…"
+                                onkeypress="if(event.key==='Enter')sendMsg()">
+                            <button class="send-btn" onclick="sendMsg()">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SIDEBAR -->
+                <div class="sidebar">
+                    <!-- Game Info -->
+                    <div class="card">
+                        <div class="card-title">📊 Game Info</div>
+                        <div style="display:flex;flex-direction:column;gap:.6rem;">
+                            <div class="rotation-item" style="background:transparent;border:none;padding:.2rem 0;">
+                                <span class="text-muted" style="font-size:.8rem;width:80px;">Round</span>
+                                <span style="font-weight:800;font-size:1.1rem;" id="infoRound">1</span>
+                            </div>
+                            <div class="rotation-item" style="background:transparent;border:none;padding:.2rem 0;">
+                                <span class="text-muted" style="font-size:.8rem;width:80px;">Host</span>
+                                <span style="font-weight:700;" id="infoHost">-</span>
+                            </div>
+                            <div class="rotation-item" style="background:transparent;border:none;padding:.2rem 0;">
+                                <span class="text-muted" style="font-size:.8rem;width:80px;">Cycle</span>
+                                <span id="infoCycle" style="font-weight:700;">1</span>
+                            </div>
+                            <div class="rotation-item" style="background:transparent;border:none;padding:.2rem 0;">
+                                <span class="text-muted" style="font-size:.8rem;width:80px;">Players</span>
+                                <span style="font-weight:700;" id="infoPlayers">0</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline btn-sm btn-full mt2" onclick="askLeave()">🚪 Leave Game</button>
+                    </div>
+
+                    <!-- Rotation Order -->
+                    <div class="card">
+                        <div class="card-title">🔄 Host Rotation</div>
+                        <div class="rotation-list" id="rotationList"></div>
+                    </div>
+
+                    <!-- Leaderboard -->
+                    <div class="card">
+                        <div class="card-title">🏆 Leaderboard</div>
+                        <div id="leaderboard">
+                            <div class="text-muted text-center" style="padding:1rem;">No scores yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <footer
+        style="margin-top:3rem;padding:1.5rem;text-align:center;border-top:1px solid var(--glass-border);color:var(--muted);font-size:.8rem;">
+        Designed &amp; Developed by <strong style="color:var(--primary-light);">Bhagavan &amp; Team</strong> · © 2026
+        BhagavanZone
+    </footer>
+
+    <script>
+        // ==================== STATE ====================
+        const socket = io();
+        let state = {
+            roomCode: '', isHost: false, username: '', players: [],
+            selectedSong: null, trackStart: 0, trackDuration: 60,
+            songPlaying: false, hostQueue: [], shouldLeave: false,
+            roundDuration: 180, graceDuration: 30,
+            timerPhase: 'round', timerRemaining: 180,
+            allSongs: []
+        };
+
+        // ==================== LEAVE GUARD ====================
+        window.addEventListener('beforeunload', e => {
+            if (!state.shouldLeave && state.roomCode) { e.preventDefault(); e.returnValue = ''; }
+        });
+        function askLeave() { document.getElementById('leaveModal').classList.add('open'); }
+        function cancelLeave() { document.getElementById('leaveModal').classList.remove('open'); }
+        function confirmLeave() {
+            state.shouldLeave = true;
+            socket.emit('leaveRoom', { roomCode: state.roomCode });
+            resetToWelcome();
+            cancelLeave();
+        }
+        function resetToWelcome() {
+            state.roomCode = ''; state.isHost = false; state.players = [];
+            state.selectedSong = null; state.songPlaying = false;
+            document.getElementById('headerMeta').classList.add('hidden');
+            setGraceBanner(false);
+            showScreen('screenWelcome');
+        }
+
+        // ==================== NOTIFICATIONS ====================
+        function notify(type, msg, icon = '') {
+            const c = document.getElementById('notifContainer');
+            const el = document.createElement('div');
+            el.className = `notif ${type}`;
+            el.innerHTML = `<span>${icon || { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' }[type]}</span><div><div>${msg}</div><div class="notif-progress"></div></div>`;
+            c.prepend(el);
+            setTimeout(() => el.remove(), 4200);
+        }
+
+        // ==================== SCREEN ROUTING ====================
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // ==================== HEADER ====================
+        function updateHeader(hostName) {
+            document.getElementById('headerMeta').classList.remove('hidden');
+            document.getElementById('hRoomCode').textContent = state.roomCode;
+            document.getElementById('hHostBadge').classList.toggle('hidden', !state.isHost);
+            document.getElementById('hMemberBadge').classList.toggle('hidden', state.isHost);
+        }
+
+        // ==================== TIMER RING ====================
+        const RING_CIRC = 125.66;
+        function updateTimerRing(remaining, total) {
+            const pct = Math.max(0, remaining / total);
+            const offset = RING_CIRC * (1 - pct);
+            const ring = document.getElementById('timerRingFg');
+            ring.style.strokeDashoffset = offset;
+            // Color: green → yellow → red
+            const hue = pct > 0.5 ? 142 : pct > 0.25 ? 45 : 0;
+            ring.style.stroke = `hsl(${hue},80%,50%)`;
+            const m = Math.floor(remaining / 60), s = remaining % 60;
+            document.getElementById('hTimerText').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // ==================== GRACE BANNER ====================
+        function setGraceBanner(active, countdown = 30) {
+            const b = document.getElementById('graceBanner');
+            const gl = document.getElementById('hGraceLabel');
+            b.classList.toggle('active', active);
+            if (gl) gl.classList.toggle('hidden', !active);
+            if (active) document.getElementById('graceCountdown').textContent = countdown;
+        }
+
+        // ==================== PLAYERS LISTS ====================
+        const COLORS = ['#7c3aed', '#ec4899', '#f97316', '#22c55e', '#38bdf8', '#a855f7', '#fb923c'];
+        function avatarColor(name) { return COLORS[name.charCodeAt(0) % COLORS.length]; }
+        function avatarLetter(name) { return name.charAt(0).toUpperCase(); }
+
+        function renderPlayersList(players, containerId) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            el.innerHTML = '';
+            players.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'player-item' + (p.isHost ? ' is-host' : '');
+                div.innerHTML = `
+      <div class="player-avatar" style="background:${avatarColor(p.username)}">${avatarLetter(p.username)}</div>
+      <span class="player-name-text">${p.username}${p.username === state.username ? ' <span class="pip pip-you">YOU</span>' : ''}</span>
+      ${p.isHost ? '<span class="pip pip-host">👑 HOST</span>' : ''}
+    `;
+                el.appendChild(div);
+            });
+        }
+
+        // ==================== WINNER MEMBERS RADIO ====================
+        function renderMembersRadio(players) {
+            const el = document.getElementById('membersRadio');
+            if (!el) return;
+            const eligible = players.filter(p => !p.isHost); // non-host members
+            if (eligible.length === 0) {
+                el.innerHTML = '<div class="text-muted text-center" style="padding:.8rem;">No members to select</div>';
+                return;
+            }
+            el.innerHTML = '';
+            eligible.forEach(p => {
+                const label = document.createElement('label');
+                label.className = 'member-radio';
+                label.innerHTML = `<input type="radio" name="winnerPick" value="${p.username}">
+      <div class="player-avatar" style="background:${avatarColor(p.username)};width:28px;height:28px;font-size:.75rem;">${avatarLetter(p.username)}</div>
+      <label style="pointer-events:none;">${p.username}</label>`;
+                el.appendChild(label);
+            });
+        }
+
+        // ==================== ROTATION LIST ====================
+        function renderRotation(hostQueue, currentHostName, cycleCount) {
+            const el = document.getElementById('rotationList');
+            if (!el) return;
+            el.innerHTML = '';
+            if (!hostQueue || hostQueue.length === 0) return;
+            hostQueue.forEach((name, i) => {
+                const div = document.createElement('div');
+                const isCurrent = name === currentHostName;
+                div.className = 'rotation-item' + (isCurrent ? ' current-host' : '');
+                div.innerHTML = `<span class="rotation-num">${i + 1}</span>${name}${isCurrent ? ` <span class="cycle-badge">🎤 Now</span>` : ''}`;
+                el.appendChild(div);
+            });
+            document.getElementById('infoCycle').textContent = `#${cycleCount || 1}`;
+        }
+
+        // ==================== LEADERBOARD ====================
+        function renderLeaderboard(scores) {
+            const el = document.getElementById('leaderboard');
+            if (!scores || Object.keys(scores).length === 0) {
+                el.innerHTML = '<div class="text-muted text-center" style="padding:1rem;">No scores yet</div>';
+                return;
+            }
+            el.innerHTML = '';
+            Object.entries(scores).sort((a, b) => b[1] - a[1]).forEach(([name, sc], i) => {
+                const div = document.createElement('div');
+                div.className = 'leaderboard-item';
+                div.innerHTML = `<span class="lb-rank">${['🥇', '🥈', '🥉'][i] || i + 1 + '.'}</span>
+      <span class="lb-name">${name}</span>
+      <span class="lb-score">${sc} pts</span>`;
+                el.appendChild(div);
+            });
+        }
+
+        // ==================== SONGS ====================
+        function renderSongList(songs, filter = '') {
+            const el = document.getElementById('songList');
+            if (!el) return;
+            el.innerHTML = '';
+            const filtered = filter ? songs.filter(s => s.name.toLowerCase().includes(filter.toLowerCase())) : songs;
+            filtered.forEach(song => {
+                const div = document.createElement('div');
+                div.className = 'song-item' + (state.selectedSong && state.selectedSong.name === song.name ? ' selected' : '');
+                div.textContent = song.name;
+                div.onclick = () => selectSong(song);
+                el.appendChild(div);
+            });
+        }
+        function filterSongs() {
+            renderSongList(state.allSongs, document.getElementById('songSearch').value);
+        }
+        function selectSong(song) {
+            state.selectedSong = song;
+            document.getElementById('selSongName').textContent = song.name;
+            document.getElementById('selectedSongInfo').classList.remove('hidden');
+            document.getElementById('trackSection').classList.remove('hidden');
+
+            // Emit preload signal to members
+            socket.emit('songSelected', { roomCode: state.roomCode, songPath: song.path, songName: song.name });
+
+            // Load audio to get duration for slider
+            const a = document.getElementById('audioEl');
+            a.src = song.path;
+            a.load();
+            a.onloadedmetadata = () => {
+                const dur = Math.floor(a.duration) - state.trackDuration;
+                const slider = document.getElementById('trackSlider');
+                slider.max = dur > 0 ? dur : 0;
+                slider.value = 0;
+                state.trackStart = 0;
+                document.getElementById('trackTimeText').textContent = `0s → ${state.trackDuration}s`;
+            };
+            renderSongList(state.allSongs);
+        }
+        function onSliderChange() {
+            const v = parseInt(document.getElementById('trackSlider').value);
+            state.trackStart = v;
+            document.getElementById('trackTimeText').textContent = `${v}s → ${v + state.trackDuration}s`;
+        }
+
+        // ==================== PLAY / STOP ====================
+        function playSong() {
+            if (!state.selectedSong) { notify('error', 'Please select a song first'); return; }
+            socket.emit('playSong', {
+                roomCode: state.roomCode,
+                songPath: state.selectedSong.path,
+                songName: state.selectedSong.name,
+                startTime: state.trackStart
+            });
+        }
+        function stopSong() {
+            socket.emit('stopSong', { roomCode: state.roomCode });
+        }
+        function togglePlayButtons(enabled) {
+            const btns = document.querySelectorAll('#hostSection .btn-accent[onclick="playSong()"], #hostSection .btn-outline[onclick="stopSong()"]');
+            btns.forEach(btn => btn.disabled = !enabled);
+        }
+        function playAudio(el, src, startTime) {
+            el.src = src;
+            el.load();
+            el.oncanplay = () => {
+                el.currentTime = startTime;
+                el.play().catch(() => { });
+                el.oncanplay = null;
+            };
+        }
+        function setVisualizerPlaying(playing) {
+            document.querySelectorAll('.viz-bar').forEach(b => {
+                if (playing) b.classList.add('playing'); else b.classList.remove('playing');
+            });
+        }
+
+        // ==================== WINNER & HOST MOVE ====================
+        function declareWinner() {
+            const song = document.getElementById('correctSong').value.trim();
+            const pick = document.querySelector('input[name="winnerPick"]:checked');
+            if (!song) { notify('error', 'Enter the correct song name'); return; }
+            if (!pick) { notify('error', 'Select a winner'); return; }
+            socket.emit('declareWinner', { roomCode: state.roomCode, winnerName: pick.value, songName: song });
+            document.getElementById('correctSong').value = '';
+            document.querySelectorAll('input[name="winnerPick"]').forEach(r => r.checked = false);
+        }
+        function moveHost() {
+            socket.emit('moveHostManual', { roomCode: state.roomCode });
+        }
+
+        // ==================== CHAT ====================
+        function sendMsg() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            socket.emit('sendMessage', { roomCode: state.roomCode, message: msg });
+            input.value = '';
+        }
+        function addChatMsg(username, message) {
+            const el = document.getElementById('chatMsgs');
+            const div = document.createElement('div');
+            const mine = username === state.username;
+            div.className = `msg ${mine ? 'mine' : 'other'}`;
+            const t = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            div.innerHTML = `${!mine ? `<div class="msg-name">${username}</div>` : ''}
+    <div>${message}</div>
+    <div class="msg-time">${t}</div>`;
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // ==================== CONFETTI ====================
+        function launchConfetti() {
+            const wrap = document.getElementById('confettiWrap');
+            const colors = ['#7c3aed', '#ec4899', '#f97316', '#22c55e', '#38bdf8', '#fbbf24'];
+            for (let i = 0; i < 70; i++) {
+                const p = document.createElement('div');
+                p.className = 'confetti-piece';
+                const shapes = ['50%', '0%', '0% 50%'];
+                p.style.cssText = `
+      left:${Math.random() * 100}%;
+      width:${8 + Math.random() * 8}px;
+      height:${8 + Math.random() * 8}px;
+      background:${colors[~~(Math.random() * colors.length)]};
+      border-radius:${shapes[~~(Math.random() * shapes.length)]};
+      animation-duration:${1.5 + Math.random() * 2}s;
+      animation-delay:${Math.random() * 0.5}s;
+    `;
+                wrap.appendChild(p);
+                setTimeout(() => p.remove(), 4000);
+            }
+        }
+
+        // ==================== ROOM CREATION ====================
+        function createRoom() {
+            const name = document.getElementById('createName').value.trim();
+            const phone = document.getElementById('createPhone').value.trim();
+            if (!name) { notify('error', 'Enter your name'); return; }
+            state.username = name;
+            socket.emit('createRoom', { username: name, phone });
+        }
+        function joinRoom() {
+            const name = document.getElementById('joinName').value.trim();
+            const code = document.getElementById('joinCode').value.trim().toUpperCase();
+            if (!name || !code) { notify('error', 'Enter name and room code'); return; }
+            state.username = name;
+            socket.emit('joinRoom', { username: name, roomCode: code });
+        }
+        function startGame() { socket.emit('startGame', { roomCode: state.roomCode }); }
+        function copyCode() {
+            navigator.clipboard.writeText(state.roomCode).then(() => notify('success', 'Room code copied!'));
+        }
+        function updateLobbyUI(players, isHostUser) {
+            document.getElementById('lobbyRoomCode').textContent = state.roomCode;
+            document.getElementById('lobbyPlayerCount').textContent = `(${players.length})`;
+            document.getElementById('hostLobbyBanner').classList.toggle('hidden', !isHostUser);
+            document.getElementById('startBtn').classList.toggle('hidden', !isHostUser || players.length < 2);
+            document.getElementById('minWarn').classList.toggle('hidden', players.length >= 2 || !isHostUser);
+            renderPlayersList(players, 'lobbyPlayers');
+        }
+
+        // ==================== SOCKET EVENTS ====================
+        socket.on('connect', () => {
+            if (socket.recovered) notify('success', 'Reconnected!');
+        });
+        socket.on('disconnect', reason => {
+            if (reason !== 'io server disconnect') notify('warning', 'Connection lost — reconnecting…');
+        });
+        socket.on('connect_error', () => notify('error', 'Server connection failed'));
+        socket.on('error', d => notify('error', d.message));
+        socket.on('success', d => notify('success', d.message));
+
+        socket.on('roomCreated', d => {
+            state.roomCode = d.roomCode; state.isHost = true; state.players = d.players;
+            showScreen('screenRoom');
+            updateLobbyUI(d.players, true);
+            updateHeader();
+            document.getElementById('headerMeta').classList.remove('hidden');
+            document.getElementById('hRoomCode').textContent = state.roomCode;
+            document.getElementById('hHostBadge').classList.remove('hidden');
+            document.getElementById('hMemberBadge').classList.add('hidden');
+            notify('success', `Room ${d.roomCode} created!`);
+        });
+        socket.on('joinedRoom', d => {
+            state.roomCode = d.roomCode; state.isHost = d.isHost; state.players = d.players;
+            showScreen('screenRoom');
+            updateLobbyUI(d.players, d.isHost);
+            document.getElementById('headerMeta').classList.remove('hidden');
+            document.getElementById('hRoomCode').textContent = state.roomCode;
+            document.getElementById('hHostBadge').classList.toggle('hidden', !d.isHost);
+            document.getElementById('hMemberBadge').classList.toggle('hidden', d.isHost);
+            notify('success', `Joined room ${d.roomCode}!`);
+        });
+        socket.on('playersUpdated', d => {
+            state.players = d.players;
+            updateLobbyUI(d.players, state.isHost);
+            renderPlayersList(d.players, 'memberPlayersList');
+            renderMembersRadio(d.players);
+        });
+        socket.on('gameStarted', d => {
+            state.players = d.players;
+            state.allSongs = d.songs;
+            state.trackDuration = d.trackDuration || 60;
+            state.timerRemaining = state.roundDuration = 180;
+            state.timerPhase = 'round';
+            showScreen('screenGame');
+            setGraceBanner(false);
+            renderSongList(d.songs);
+            renderLeaderboard(d.scores);
+            renderMembersRadio(d.players);
+            renderPlayersList(d.players, 'memberPlayersList');
+            renderRotation(d.hostQueue, d.hostName, d.cycleCount);
+            document.getElementById('infoRound').textContent = d.round;
+            document.getElementById('infoHost').textContent = d.hostName;
+            document.getElementById('infoPlayers').textContent = d.players.length;
+            if (d.isHost !== undefined) state.isHost = d.isHost;
+            const myHost = d.players.find(p => p.username === state.username)?.isHost;
+            state.isHost = !!myHost;
+            document.getElementById('hostSection').classList.toggle('hidden', !state.isHost);
+            document.getElementById('memberSection').classList.toggle('hidden', state.isHost);
+            document.getElementById('hHostBadge').classList.toggle('hidden', !state.isHost);
+            document.getElementById('hMemberBadge').classList.toggle('hidden', state.isHost);
+            updateTimerRing(180, 180);
+        });
+        socket.on('timerUpdate', d => {
+            state.timerRemaining = d.timeRemaining;
+            state.timerPhase = d.phase || 'round';
+            const total = state.timerPhase === 'grace' ? state.graceDuration : state.roundDuration;
+            updateTimerRing(d.timeRemaining, total);
+            if (state.timerPhase === 'grace') {
+                setGraceBanner(true, d.timeRemaining);
+            }
+        });
+        socket.on('graceperiodStarted', d => {
+            state.graceDuration = d.graceDuration;
+            setGraceBanner(true, d.graceDuration);
+            notify('warning', '⚡ Grace period started — host has 30s!');
+        });
+        socket.on('songPreload', d => {
+            // Members preload audio so play is instant
+            const a = document.getElementById('memberAudio');
+            if (a) { a.src = d.songPath; a.load(); }
+        });
+        socket.on('songPlaying', d => {
+            state.songPlaying = true;
+            if (state.isHost) {
+                // Host side
+                const a = document.getElementById('audioEl');
+                playAudio(a, d.songPath, d.startTime);
+                document.getElementById('selSongName').textContent = d.songName;
+                document.getElementById('selectedSongInfo').classList.remove('hidden');
+                // Auto-stop after clip
+                setTimeout(() => { a.pause(); state.songPlaying = false; }, (d.duration || 60) * 1000 + 500);
+            } else {
+                // Member side
+                const a = document.getElementById('memberAudio');
+                playAudio(a, d.songPath, d.startTime);
+                setVisualizerPlaying(true);
+                document.getElementById('waitTitle').textContent = '🎵 Song Playing!';
+                document.getElementById('waitStatus').textContent = 'Listen carefully and type your guess below…';
+                document.getElementById('waitIcon').textContent = '🎶';
+                setTimeout(() => {
+                    a.pause(); setVisualizerPlaying(false);
+                    document.getElementById('waitTitle').textContent = 'Waiting for Host';
+                    document.getElementById('waitStatus').textContent = 'Host is selecting a song…';
+                    document.getElementById('waitIcon').textContent = '🎧';
+                }, (d.duration || 60) * 1000 + 500);
+            }
+            setGraceBanner(false);
+            if (state.isHost) togglePlayButtons(false);
+        });
+        socket.on('songStopped', () => {
+            state.songPlaying = false;
+            document.getElementById('audioEl')?.pause();
+            document.getElementById('memberAudio')?.pause();
+            setVisualizerPlaying(false);
+            document.getElementById('waitTitle').textContent = 'Waiting for Host';
+            document.getElementById('waitStatus').textContent = 'Host stopped the song…';
+            document.getElementById('waitIcon').textContent = '🎧';
+        });
+        socket.on('winnerDeclared', d => {
+            launchConfetti();
+            notify('success', `🏆 ${d.winnerName} guessed it! "${d.songName}"`);
+            renderLeaderboard(d.scores);
+            const a1 = document.getElementById('audioEl');
+            const a2 = document.getElementById('memberAudio');
+            if (a1) { a1.pause(); a1.removeAttribute('src'); a1.load(); }
+            if (a2) { a2.pause(); a2.removeAttribute('src'); a2.load(); }
+            setVisualizerPlaying(false);
+            state.players = d.players;
+            renderMembersRadio(d.players);
+            renderPlayersList(d.players, 'memberPlayersList');
+        });
+        socket.on('hostChanged', d => {
+            state.isHost = d.newHostId === socket.id;
+            state.players = d.players;
+            state.timerPhase = 'round';
+            state.timerRemaining = 180;
+            setGraceBanner(false);
+
+            // Refresh song list from server (fresh read each round — no stale previous round songs)
+            if (d.songs && d.songs.length > 0) {
+                state.allSongs = d.songs;
+            }
+
+            document.getElementById('infoRound').textContent = d.round;
+            document.getElementById('infoHost').textContent = d.newHostName;
+            document.getElementById('infoPlayers').textContent = d.players.length;
+            document.getElementById('infoCycle').textContent = `#${d.cycleCount || 1}`;
+            renderMembersRadio(d.players);
+            renderPlayersList(d.players, 'memberPlayersList');
+            // Rebuild rotation using players order
+            renderRotation(d.players.map(p => p.username), d.newHostName, d.cycleCount);
+
+            document.getElementById('hostSection').classList.toggle('hidden', !state.isHost);
+            document.getElementById('memberSection').classList.toggle('hidden', state.isHost);
+            document.getElementById('hHostBadge').classList.toggle('hidden', !state.isHost);
+            document.getElementById('hMemberBadge').classList.toggle('hidden', state.isHost);
+
+            // Reset host UI state — fully clear previous round song selection
+            const a1 = document.getElementById('audioEl');
+            const a2 = document.getElementById('memberAudio');
+            if (a1) { a1.pause(); a1.removeAttribute('src'); a1.load(); }
+            if (a2) { a2.pause(); a2.removeAttribute('src'); a2.load(); }
+
+            if (state.isHost) {
+                state.selectedSong = null;
+                document.getElementById('selectedSongInfo').classList.add('hidden');
+                document.getElementById('trackSection').classList.add('hidden');
+                document.getElementById('songSearch').value = '';
+                togglePlayButtons(true);
+                renderSongList(state.allSongs); // render with fresh list, no filter
+                notify('success', '👑 You are now the HOST!');
+            } else {
+                notify('info', `👑 ${d.newHostName} is now the host`);
+                document.getElementById('waitTitle').textContent = 'Waiting for Host';
+                document.getElementById('waitStatus').textContent = `${d.newHostName} is picking a song…`;
+                document.getElementById('waitIcon').textContent = '🎧';
+                setVisualizerPlaying(false);
+            }
+            updateTimerRing(180, 180);
+        });
+        socket.on('cycleComplete', d => {
+            notify('info', `🔄 Cycle ${d.cycle} started — all players rotate again!`, '🔄');
+        });
+        socket.on('messageReceived', d => addChatMsg(d.username, d.message));
+    </script>
+</body>
+
+</html>
